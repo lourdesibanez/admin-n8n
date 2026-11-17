@@ -1,0 +1,122 @@
+{
+  "name": "Failover de red",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "http://host.docker.internal:8081",
+        "options": {
+          "timeout": 2000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -432,
+        -32
+      ],
+      "id": "8a4bd8d5-1949-4023-95da-517c846baec5",
+      "name": "Servidor Principal(HTTP request)",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "http://host.docker.internal:8082",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -80,
+        192
+      ],
+      "id": "7fdb2de8-2471-4220-9f44-f6b67fb32c11",
+      "name": "ServidorBackup(HTTP request)"
+    },
+    {
+      "parameters": {
+        "chatId": "5309327231",
+        "text": "🚨 CAÍDA DETECTADA: Servidor Principal fuera de línea. Failover ejecutado exitosamente hacia Servidor Secundario.",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -80,
+        -16
+      ],
+      "id": "00c223b9-4beb-4fe3-b730-d18c97cfe39a",
+      "name": "Send a text message",
+      "webhookId": "a7c08fda-4bdb-4642-8b92-1bcaac37e9b0",
+      "credentials": {
+        "telegramApi": {
+          "id": "P655iySDKlqr1sNd",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 15
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -656,
+        -32
+      ],
+      "id": "a45ea854-f67e-4fa7-ab2f-52db4316d28a",
+      "name": "Planificador de monitoreo"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Servidor Principal(HTTP request)": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "ServidorBackup(HTTP request)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Planificador de monitoreo": {
+      "main": [
+        [
+          {
+            "node": "Servidor Principal(HTTP request)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "1fda138b-5cf9-4419-a780-0a5cd85de07a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f2e5a0b26fd2626cfc82f24e657aee0f9f7ac64b2df32feced677b9d7b12eab9"
+  },
+  "nodeGroups": [],
+  "id": "7yzWGwoaTmcsP6zX",
+  "tags": []
+}

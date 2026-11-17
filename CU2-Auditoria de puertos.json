@@ -1,0 +1,190 @@
+{
+  "name": "Auditoria de puertos",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "9c047887-5eaa-46f9-be93-9b28b4597462",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "command": "netstat -ano -p TCP | findstr LISTENING"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "9a2cb9eb-c79b-4460-8b55-736f1239766a",
+      "name": "Execute a command",
+      "credentials": {
+        "sshPassword": {
+          "id": "gwvPKxQ09cUFJmwR",
+          "name": "SSH Password account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const stdout = $input.first().json.stdout || \"\";\nconst lineas = stdout.split(/\\r?\\n/).filter(l => l.trim() !== \"\");\n\n// Puertos autorizados por política de seguridad del servidor\nconst puertosPermitidos = [0, 22, 80, 135, 443, 445, 1521, 3300, 3306, 5040, 5357, 5678, 8080, 8082, 12345, 14147, 20271, 24830, 33060, 45623, 49664, 49665, 49666, 49667, 49668, 49670, 49677, 49678, 53627, 53628, 58056, 58507, 60869, 62802, 63037, 63038];\n\nconst puertosDetectados = [];\nconst puertosNoAutorizados = [];\n\nfor (const linea of lineas) {\n  // Extraer el puerto de la columna dirección local (ej. 0.0.0.0:8080 -> 8080)\n  const match = linea.match(/\\s+(?:0\\.0\\.0\\.0|127\\.0\\.0\\.1|\\[::\\]|\\[::1\\]):(\\d+)\\s+/);\n  if (match) {\n    const puerto = parseInt(match[1], 10);\n    if (!puertosDetectados.includes(puerto)) {\n      puertosDetectados.push(puerto);\n      if (!puertosPermitidos.includes(puerto)) {\n        puertosNoAutorizados.push(puerto);\n      }\n    }\n  }\n}\n\nreturn [\n  {\n    json: {\n      fecha_auditoria: new Date().toLocaleString(\"es-AR\"),\n      hay_riesgo: puertosNoAutorizados.length > 0,\n      cantidad_riesgos: puertosNoAutorizados.length,\n      puertos_no_autorizados: puertosNoAutorizados.join(\", \") || \"Ninguno\",\n      puertos_totales: puertosDetectados.sort((a, b) => a - b).join(\", \")\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "id": "01bd9774-b800-4e22-acd2-e70abd5eaf0b",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 4
+          },
+          "conditions": [
+            {
+              "id": "384edfae-bc60-4333-b4b3-8e85078cd70e",
+              "leftValue": "={{ $json.hay_riesgo }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.4,
+      "position": [
+        672,
+        0
+      ],
+      "id": "bde17266-7959-4fdd-a4d0-be2a4be865c0",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "fromEmail": "leonela.gonzalez@ing.unlpam.edu.ar",
+        "toEmail": "lourdes.ibanez@ing.unlpam.edu.ar",
+        "subject": "=ALERTA DE SEGURIDAD: {{ $json.cantidad_riesgos }} puerto(s) no autorizado(s) detectado(s)",
+        "html": "=<div style=\"font-family: 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #fecaca; border-radius: 10px; overflow: hidden;\">\n  <div style=\"background-color: #991b1b; color: #ffffff; padding: 20px; text-align: center;\">\n    <h2 style=\"margin: 0; font-size: 19px;\">Alerta de Auditoría de Red</h2>\n    <p style=\"margin: 5px 0 0; color: #fca5a5; font-size: 13px;\">Detección de Puertos Fuera de Política</p>\n  </div>\n  <div style=\"padding: 24px; background-color: #ffffff; color: #334155;\">\n    <p>El escaneo periódico detectó servicios escuchando en puertos no autorizados en el servidor local:</p>\n    <table style=\"width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;\">\n      <tr style=\"background-color: #fef2f2;\">\n        <td style=\"padding: 10px; border-bottom: 1px solid #fee2e2; font-weight: 600; color: #991b1b;\">Puertos No Autorizados</td>\n        <td style=\"padding: 10px; border-bottom: 1px solid #fee2e2; font-family: monospace; font-weight: 700; color: #dc2626;\">{{ $json.puertos_no_autorizados }}</td>\n      </tr>\n      <tr>\n        <td style=\"padding: 10px; border-bottom: 1px solid #e2e8f0; font-weight: 600;\">Fecha y Hora</td>\n        <td style=\"padding: 10px; border-bottom: 1px solid #e2e8f0;\">{{ $json.fecha_auditoria }}</td>\n      </tr>\n      <tr style=\"background-color: #f8fafc;\">\n        <td style=\"padding: 10px; border-bottom: 1px solid #e2e8f0; font-weight: 600;\">Total Puertos Activos</td>\n        <td style=\"padding: 10px; border-bottom: 1px solid #e2e8f0; font-family: monospace;\">{{ $json.puertos_totales }}</td>\n      </tr>\n    </table>\n    <p style=\"font-size: 13px; color: #64748b; margin-bottom: 0;\">Acción sugerida: Revisar los procesos asociados mediante <code>netstat -ano</code> y cerrar los puertos innecesarios en el firewall.</p>\n  </div>\n</div>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        896,
+        -96
+      ],
+      "id": "43c93dd1-c6a6-4540-b6ce-757144556b56",
+      "name": "Send an Email",
+      "webhookId": "0ddd202f-00a3-4efc-a4e3-991938a01c52",
+      "credentials": {
+        "smtp": {
+          "id": "EvR7VDJqOJZTXBqM",
+          "name": "SMTP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## No olvidarnos\n**False caso de exito** \n**True cuando detecta riesgo**\n",
+        "height": 96,
+        "width": 208
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        720,
+        144
+      ],
+      "typeVersion": 1,
+      "id": "0a24bda0-5f42-47c7-ba5d-5dec608314fb",
+      "name": "Sticky Note"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Execute a command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a command": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Send an Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "ed670ddb-f76f-4806-826e-00fcb6142dcb",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f2e5a0b26fd2626cfc82f24e657aee0f9f7ac64b2df32feced677b9d7b12eab9"
+  },
+  "nodeGroups": [],
+  "id": "BpqWkxZWdtpEKuKs",
+  "tags": []
+}

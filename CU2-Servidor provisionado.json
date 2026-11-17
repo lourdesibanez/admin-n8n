@@ -1,0 +1,183 @@
+{
+  "name": "Servidor provisionado",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Solicitud de aprovisionamiento de Red (IPAM)",
+        "formDescription": "Ingrese los datos del servidor para asignar IP y registrar DNS/DHCP",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Servidor",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Rol",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "WEB"
+                  },
+                  {
+                    "option": "BD"
+                  },
+                  {
+                    "option": "APP"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Direccion MAC",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Solicitante",
+              "fieldType": "email",
+              "requiredField": true
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        -304,
+        96
+      ],
+      "id": "2e72741e-9d54-454d-aa9d-c00ca7a855e3",
+      "name": "On form submission",
+      "webhookId": "78da0985-6edc-4059-b575-53cbd86d0dbf"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Leer los campos exactos del formulario\nconst formData = $input.first().json;\n\nconst nombreServidor = formData[\"Servidor\"] || \"srv-nodo-01\";\nconst rolRaw = String(formData[\"Rol\"] || \"WEB\").trim().toUpperCase();\nconst macAddress = formData[\"Direccion MAC\"] || \"00:1A:2B:3C:4D:99\";\nconst solicitante = formData[\"Solicitante\"] || \"Admin\";\n\n// 2. Definir rangos de subred por Rol (192.168.10.0/24)\nconst subredBase = \"192.168.10.\";\nconst gateway = \"192.168.10.1\";\nconst mascara = \"255.255.255.0\";\n\nconst rangosPorRol = {\n  \"WEB\": { inicio: 10,  fin: 50 },\n  \"DB\":  { inicio: 51,  fin: 100 },\n  \"APP\": { inicio: 101, fin: 150 }\n};\n\n// Seleccionar el rango (si no coincide, usa WEB por defecto)\nconst rango = rangosPorRol[rolRaw] || rangosPorRol[\"WEB\"];\n\n// 3. Base de datos IPAM simulada (IPs ocupadas)\nconst ipamOcupadas = [\n  { ip: \"192.168.10.10\", hostname: \"srv-web-01\", mac: \"00:1A:2B:3C:4D:10\", rol: \"WEB\" },\n  { ip: \"192.168.10.11\", hostname: \"srv-web-02\", mac: \"00:1A:2B:3C:4D:11\", rol: \"WEB\" }\n];\n\n// 4. Buscar la primera IP libre en el rango del Rol elegido\nconst listaIpsOcupadas = ipamOcupadas.map(r => r.ip);\nlet ipAsignada = null;\n\nfor (let octeto = rango.inicio; octeto <= rango.fin; octeto++) {\n  const ipCandidata = `${subredBase}${octeto}`;\n  if (!listaIpsOcupadas.includes(ipCandidata)) {\n    ipAsignada = ipCandidata;\n    break;\n  }\n}\n\nif (!ipAsignada) {\n  throw new Error(`No hay IPs disponibles para el rol ${rolRaw}`);\n}\n\n// 5. Actualizar inventario IPAM\nconst nuevoRegistro = {\n  ip: ipAsignada,\n  hostname: nombreServidor,\n  mac: macAddress,\n  rol: rolRaw,\n  solicitante: solicitante,\n  estado: \"Asignada\"\n};\n\nconst ipamActualizado = [...ipamOcupadas, nuevoRegistro];\n\n// 6. Comando nativo para Windows (registra el DNS local por SSH)\nconst comandoDnsWindows = `cmd /c \"echo ${ipAsignada} ${nombreServidor}.local ${nombreServidor} >> C:\\\\Users\\\\Public\\\\hosts_dns_ipam.txt && echo ${ipAsignada} ${nombreServidor}.local ${nombreServidor}\"`;\n\nreturn [\n  {\n    json: {\n      mensaje: `Servidor ${nombreServidor} provisionado con éxito.`,\n      ip_asignada: ipAsignada,\n      gateway: gateway,\n      mascara: mascara,\n      nombre_servidor: nombreServidor,\n      mac_address: macAddress,\n      rol: rolRaw,\n      solicitante: solicitante,\n      comando_dns: comandoDnsWindows,\n      inventario_ipam: ipamActualizado\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -96,
+        96
+      ],
+      "id": "b19fff6b-d553-4fc0-b27a-c89f6ceb7d69",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "command": "={{ $json.comando_dns }}"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        96,
+        96
+      ],
+      "id": "4c195cd8-d456-4e54-82f3-68abac0c7ed2",
+      "name": "Execute a command",
+      "credentials": {
+        "sshPassword": {
+          "id": "gwvPKxQ09cUFJmwR",
+          "name": "SSH Password account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "completion",
+        "completionTitle": "Servidor provisionado con exito",
+        "completionMessage": "=El nodo {{ $('Code in JavaScript').item.json.nombre_servidor }} ({{ $('Code in JavaScript').item.json.rol }}) ha sido registrado en la red.\n\n• IP Asignada: {{ $('Code in JavaScript').item.json.ip_asignada }}\n• Máscara: {{ $('Code in JavaScript').item.json.mascara }}\n• Gateway: {{ $('Code in JavaScript').item.json.gateway }}\n• MAC Asociada: {{ $('Code in JavaScript').item.json.mac_address }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.form",
+      "typeVersion": 2.5,
+      "position": [
+        320,
+        -80
+      ],
+      "id": "dcf25ddb-a710-46d3-b7c0-e74cfce0d741",
+      "name": "Form",
+      "webhookId": "f711b08b-8308-4653-a919-6ad821b00044"
+    },
+    {
+      "parameters": {
+        "fromEmail": "leonela.gonzalez@ing.unlpam.edu.ar",
+        "toEmail": "={{ $('Code in JavaScript').item.json.solicitante }}",
+        "subject": "=Servidor Provisionado: {{ $('Code in JavaScript').item.json.nombre_servidor }} ({{ $('Code in JavaScript').item.json.ip_asignada }})",
+        "html": "=<div style=\"font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);\">\n  \n  <div style=\"background-color: #1e293b; color: #ffffff; padding: 24px; text-align: center;\">\n    <h2 style=\"margin: 0; font-size: 20px; letter-spacing: 0.5px;\">Aprovisionamiento de Red Completado</h2>\n    <p style=\"margin: 6px 0 0; color: #94a3b8; font-size: 13px;\">Sistema Automatizado IPAM • DNS / DHCP</p>\n  </div>\n\n  <div style=\"padding: 24px; background-color: #ffffff; color: #334155;\">\n    <p style=\"margin-top: 0; font-size: 15px;\">Hola,</p>\n    <p style=\"font-size: 15px; line-height: 1.5;\">Tu solicitud ha sido procesada con éxito. El nuevo nodo ya cuenta con su dirección IP reservada y su registro DNS activo en la red:</p>\n\n    <table style=\"width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;\">\n      <tr style=\"background-color: #f8fafc;\">\n        <td style=\"padding: 12px; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #475569; width: 40%;\">Servidor (Hostname)</td>\n        <td style=\"padding: 12px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-weight: 600;\">{{ $('Code in JavaScript').item.json.nombre_servidor }}</td>\n      </tr>\n      <tr>\n        <td style=\"padding: 12px; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #475569;\">Rol Asignado</td>\n        <td style=\"padding: 12px; border-bottom: 1px solid #e2e8f0;\"><span style=\"background-color: #dbeafe; color: #1e40af; padding: 3px 10px; border-radius: 12px; font-weight: 600; font-size: 12px;\">{{ $('Code in JavaScript').item.json.rol }}</span></td>\n      </tr>\n      <tr style=\"background-color: #f8fafc;\">\n        <td style=\"padding: 12px; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #475569;\">Dirección IP Asignada</td>\n        <td style=\"padding: 12px; border-bottom: 1px solid #e2e8f0; color: #059669; font-weight: 700; font-family: monospace; font-size: 15px;\">{{ $('Code in JavaScript').item.json.ip_asignada }}</td>\n      </tr>\n      <tr>\n        <td style=\"padding: 12px; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #475569;\">Máscara de Subred</td>\n        <td style=\"padding: 12px; border-bottom: 1px solid #e2e8f0; font-family: monospace;\">{{ $('Code in JavaScript').item.json.mascara }}</td>\n      </tr>\n      <tr style=\"background-color: #f8fafc;\">\n        <td style=\"padding: 12px; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #475569;\">Puerta de Enlace (Gateway)</td>\n        <td style=\"padding: 12px; border-bottom: 1px solid #e2e8f0; font-family: monospace;\">{{ $('Code in JavaScript').item.json.gateway }}</td>\n      </tr>\n      <tr>\n        <td style=\"padding: 12px; border-bottom: 1px solid #e2e8f0; font-weight: 600; color: #475569;\">Dirección MAC</td>\n        <td style=\"padding: 12px; border-bottom: 1px solid #e2e8f0; font-family: monospace;\">{{ $('Code in JavaScript').item.json.mac_address }}</td>\n      </tr>\n    </table>\n\n    <p style=\"font-size: 13px; color: #64748b; margin-bottom: 0;\">Este registro fue impactado automáticamente en el inventario IPAM y el servicio DNS local.</p>\n  </div>\n\n  <div style=\"background-color: #f1f5f9; padding: 14px; text-align: center; font-size: 12px; color: #64748b;\">\n    Notificación automática generada por <strong>n8n</strong>\n  </div>\n</div>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        320,
+        96
+      ],
+      "id": "a623c251-ae40-4037-973c-5eba28659475",
+      "name": "Send an Email",
+      "webhookId": "8e9bcd0c-419b-42fe-9c39-9fdb90463e66",
+      "credentials": {
+        "smtp": {
+          "id": "EvR7VDJqOJZTXBqM",
+          "name": "SMTP account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Execute a command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a command": {
+      "main": [
+        [
+          {
+            "node": "Send an Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Form",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "00813810-cefd-468f-9d30-bd3de53a4315",
+  "meta": {
+    "instanceId": "f2e5a0b26fd2626cfc82f24e657aee0f9f7ac64b2df32feced677b9d7b12eab9"
+  },
+  "nodeGroups": [],
+  "id": "EQ0RbSmKkQq0LP3G",
+  "tags": []
+}
