@@ -2,8 +2,6 @@
 
 Proyecto académico desarrollado para la cátedra de Redes y Comunicaciones — Facultad de Ingeniería, Universidad Nacional de La Pampa (UNLPam).
 
-**Integrantes:** Lourdes Ibañez, Leonela González  
-**Año:** 2026
 
 ## Descripción General
 Implementación de una plataforma de orquestación y monitoreo de red basada en **n8n** desplegado en contenedor **Docker** sobre un entorno anfitrión **Windows 11**, interactuando con el host mediante **OpenSSH Server (SSHv2)** y peticiones HTTP.
